@@ -3,7 +3,8 @@
 import os
 from dotenv import load_dotenv
 
-load_dotenv()
+# override=True：.env 中的值覆盖系统环境变量（避免残留旧 Key）
+load_dotenv(override=True)
 
 
 def _require(key: str) -> str:
@@ -22,5 +23,5 @@ DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
 DBHUB_MCP_URL = os.getenv("DBHUB_MCP_URL", "http://localhost:8080")
 
 # ── App ───────────────────────────────────────────────
-APP_TITLE = os.getenv("APP_TITLE", "DBHub Chat — 数据库智能助手")
+APP_TITLE = os.getenv("APP_TITLE", "演示demo")
 APP_PORT = int(os.getenv("APP_PORT", "8501"))

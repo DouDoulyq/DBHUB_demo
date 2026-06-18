@@ -31,8 +31,13 @@ def render_tool_message(
     tool_args: dict,
     result: str | None = None,
     pending: bool = False,
+    skills_used: list[str] | None = None,
 ) -> None:
-    """渲染工具调用消息（折叠卡片）。"""
+    """渲染工具调用消息（折叠卡片）。
+
+    Args:
+        skills_used: 本次调用使用的 Skill 名称列表，如 ['dbhub-format', 'mall-price-crud']
+    """
     with st.chat_message("assistant"):
         sql = tool_args.get("sql", "")
         op_label = classify_sql(sql) if sql else "工具调用"
@@ -44,7 +49,14 @@ def render_tool_message(
         else:
             status = "🔧 执行中"
 
-        with st.expander(f"{status} {op_label} — {tool_name}", expanded=pending):
+        # 构建标题，包含 skill 标签
+        skill_tags = ""
+        if skills_used:
+            icons = {"dbhub-format": "📊", "mall-price-crud": "🏷️"}
+            tags = [f"{icons.get(s, '🧩')} {s}" for s in skills_used]
+            skill_tags = "  " + "  ".join(tags)
+
+        with st.expander(f"{status} {op_label} — {tool_name}{skill_tags}", expanded=pending):
             if sql:
                 st.code(sql, language="sql")
             else:

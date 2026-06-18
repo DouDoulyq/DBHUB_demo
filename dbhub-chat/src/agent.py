@@ -18,7 +18,8 @@ from src.safety import classify_sql, ConfirmationRequest, needs_confirmation
 
 logger = logging.getLogger(__name__)
 
-MAX_TOOL_ROUNDS = 5
+MAX_TOOL_ROUNDS = 12
+MAX_CONSECUTIVE_ERRORS = 3
 
 
 # ── Step 结果类型 ───────────────────────────────────────
@@ -70,7 +71,9 @@ class Agent:
             StepResult，可能是 DONE / TOOL_CALLS / NEED_CONFIRM
         """
         self._round = 0
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}, *history]
+        # 过滤掉历史中的 system 消息（Qwen 要求 system 必须在最前面且只能有一条）
+        clean_history = [m for m in history if m.get("role") != "system"]
+        messages = [{"role": "system", "content": SYSTEM_PROMPT}, *clean_history]
         messages.append({"role": "user", "content": user_message})
         return await self._llm_step(messages)
 
@@ -102,7 +105,7 @@ class Agent:
             return StepResult(
                 kind=StepKind.DONE,
                 messages=messages,
-                content="处理轮次已达上限，请简化您的问题再试一次。",
+                content="⚠️ 处理轮次已达上限。如遇到数据库报错，请确认表结构和字段后重试；或者简化您的问题。",
             )
 
         response = await self.llm.chat(messages, self._tools_openai)
@@ -110,10 +113,14 @@ class Agent:
         # 纯文本 → 完成
         if not response.get("tool_calls"):
             messages.append(response)
+            content = response.get("content", "")
+            # Qwen 可能把 token 全用于 reasoning，content 为空时给提示
+            if not content and response.get("reasoning_content"):
+                content = "（模型思考过程过长，请简化问题后重试）"
             return StepResult(
                 kind=StepKind.DONE,
                 messages=messages,
-                content=response.get("content", ""),
+                content=content,
             )
 
         # 有 tool_calls → 检查安全性
