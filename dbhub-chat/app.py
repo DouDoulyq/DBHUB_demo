@@ -1,6 +1,6 @@
 """DBHub Chat — Streamlit 主入口。
 
-基于 DeepSeek + DBHub MCP 的数据库对话智能体。
+基于 LLM + DBHub MCP 的数据库对话智能体。
 """
 
 from __future__ import annotations

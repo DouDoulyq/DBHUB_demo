@@ -14,10 +14,10 @@ def _require(key: str) -> str:
     return value
 
 
-# ── DeepSeek ──────────────────────────────────────────
-DEEPSEEK_API_KEY = _require("DEEPSEEK_API_KEY")
-DEEPSEEK_BASE_URL = os.getenv("DEEPSEEK_BASE_URL", "https://api.deepseek.com")
-DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat")
+# ── LLM ─────────────────────────────────────────────
+LLM_API_KEY = _require("LLM_API_KEY")
+LLM_BASE_URL = os.getenv("LLM_BASE_URL", "https://api.deepseek.com")
+LLM_MODEL = os.getenv("LLM_MODEL", "deepseek-chat")
 
 # ── DBHub MCP ─────────────────────────────────────────
 DBHUB_MCP_URL = os.getenv("DBHUB_MCP_URL", "http://localhost:8080")

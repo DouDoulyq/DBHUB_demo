@@ -11,7 +11,7 @@ import logging
 from dataclasses import dataclass, field
 from enum import Enum, auto
 
-from src.config import DEEPSEEK_MODEL
+from src.config import LLM_MODEL
 from src.llm import LLMClient, SYSTEM_PROMPT
 from src.mcp_client import MCPClient
 from src.safety import classify_sql, ConfirmationRequest, needs_confirmation

@@ -1,4 +1,4 @@
-"""DeepSeek API 封装 —— OpenAI 兼容接口，支持 function calling。"""
+"""LLM API 封装 —— OpenAI 兼容接口，支持 function calling（DeepSeek / Qwen 等）。"""
 
 from __future__ import annotations
 
@@ -7,7 +7,7 @@ import logging
 from dataclasses import dataclass
 from typing import Any
 
-from src.config import DEEPSEEK_API_KEY, DEEPSEEK_BASE_URL, DEEPSEEK_MODEL
+from src.config import LLM_API_KEY, LLM_BASE_URL, LLM_MODEL
 from src.mcp_client import MCPTool
 
 logger = logging.getLogger(__name__)
@@ -98,7 +98,7 @@ goodsindex 表中 **所有名称类字段（如 name、goods_name、title 等）
 class LLMClient:
     """LLM API 异步客户端（直接 httpx，避免 OpenAI 库添加额外字段）。"""
 
-    model: str = DEEPSEEK_MODEL
+    model: str = LLM_MODEL
 
     # ── tool schema conversion ──────────────────────
 
@@ -130,9 +130,9 @@ class LLMClient:
         """
         import httpx as _httpx
 
-        url = DEEPSEEK_BASE_URL.rstrip("/") + "/chat/completions"
+        url = LLM_BASE_URL.rstrip("/") + "/chat/completions"
         headers = {
-            "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+            "Authorization": f"Bearer {LLM_API_KEY}",
             "Content-Type": "application/json",
         }
 

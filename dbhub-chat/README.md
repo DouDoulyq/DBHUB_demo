@@ -50,13 +50,13 @@
 
 - Python 3.11+
 - Node.js 18+（运行 DBHub MCP Server）
-- DeepSeek API Key（[获取](https://platform.deepseek.com)）或兼容 OpenAI 接口的 API Key
+- LLM API Key（[获取 DeepSeek](https://platform.deepseek.com) 或使用内部 Qwen 等兼容 OpenAI 接口的 Key）
 
 ### 1. 配置环境
 
 ```bash
 cp .env.example .env
-# 编辑 .env，填入 DEEPSEEK_API_KEY
+# 编辑 .env，填入 LLM_API_KEY
 ```
 
 ### 2. 安装依赖
@@ -135,9 +135,9 @@ dbhub-chat/
 
 | 变量 | 必填 | 说明 | 默认值 |
 |------|------|------|--------|
-| `DEEPSEEK_API_KEY` | ✅ | API Key（兼容 OpenAI 接口） | — |
-| `DEEPSEEK_BASE_URL` | — | API 地址 | `https://api.deepseek.com` |
-| `DEEPSEEK_MODEL` | — | 模型名（支持 deepseek-chat / qwen 等） | `deepseek-chat` |
+| `LLM_API_KEY` | ✅ | LLM API Key（DeepSeek / Qwen 等） | — |
+| `LLM_BASE_URL` | — | API 地址（OpenAI 兼容端点） | `https://api.deepseek.com` |
+| `LLM_MODEL` | — | 模型名（deepseek-chat / Qwen3.5_27B 等） | `deepseek-chat` |
 | `DBHUB_MCP_URL` | — | DBHub MCP 地址 | `http://localhost:8080` |
 | `APP_PORT` | — | Streamlit 端口 | `8501` |
 | `APP_TITLE` | — | 页面标题 | `演示demo` |

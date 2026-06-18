@@ -24,18 +24,18 @@ echo -e "${GREEN}━━━━━━━━━━━━━━━━━━━━━
 if [ ! -f ".env" ]; then
     echo -e "${YELLOW}⚠ 未找到 .env 文件，从 .env.example 复制...${NC}"
     cp .env.example .env
-    echo -e "${RED}请编辑 .env 填入 DEEPSEEK_API_KEY 后重新运行${NC}"
+    echo -e "${RED}请编辑 .env 填入 LLM_API_KEY 后重新运行${NC}"
     exit 1
 fi
 
 # 读取配置
 source .env 2>/dev/null || true
-DEEPSEEK_API_KEY="${DEEPSEEK_API_KEY:-}"
+LLM_API_KEY="${LLM_API_KEY:-}"
 DBHUB_PORT="${DBHUB_PORT:-8080}"
 APP_PORT="${APP_PORT:-8501}"
 
-if [ -z "$DEEPSEEK_API_KEY" ] || [ "$DEEPSEEK_API_KEY" = "sk-your-api-key-here" ]; then
-    echo -e "${RED}❌ 请在 .env 中设置有效的 DEEPSEEK_API_KEY${NC}"
+if [ -z "$LLM_API_KEY" ] || [ "$LLM_API_KEY" = "sk-your-api-key-here" ]; then
+    echo -e "${RED}❌ 请在 .env 中设置有效的 LLM_API_KEY${NC}"
     exit 1
 fi
 
