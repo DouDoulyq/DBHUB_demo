@@ -15,6 +15,7 @@ ENV/
 
 # ===== Environment Variables =====
 .env
+claude_open_ai.py
 
 # ===== IDE & Editor =====
 .vscode/
