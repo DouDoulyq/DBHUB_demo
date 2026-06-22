@@ -221,28 +221,30 @@ def render_conversation_list(
 
 
 def render_skill_list() -> None:
-    """在侧边栏渲染已集成的 Skill 列表及其描述。"""
+    """在侧边栏渲染已集成的 Skill 列表及其描述（动态从 .reasonix/skills/ 读取）。"""
+    from src.skills import get_registry
+
     st.sidebar.subheader("🧩 可用 Skills")
 
-    skills = [
-        {
-            "name": "dbhub-format",
-            "icon": "📊",
-            "desc": "查询结果自动格式化：Markdown 表格 + 类型感知（日期/金额/NULL/布尔/JSON）+ LIMIT 50",
-            "status": "active",
-        },
-        {
-            "name": "mall-price-crud",
-            "icon": "🏷️",
-            "desc": "商城价格管理：新增物料 / 改价 / 会员组价，goodsindex schema 专用",
-            "status": "active",
-        },
-    ]
+    registry = get_registry()
+    skill_defs = registry.list_all()
 
-    for s in skills:
-        tag = "🟢" if s["status"] == "active" else "⚪"
-        with st.sidebar.expander(f"{tag} {s['icon']} {s['name']}"):
-            st.caption(s["desc"])
+    if not skill_defs:
+        st.sidebar.caption("（无已注册 Skill）")
+        return
+
+    # 图标映射（按 skill name）
+    _ICON_MAP = {
+        "dbhub-format": "📊",
+        "mall-price-crud": "🏷️",
+    }
+
+    for s in skill_defs:
+        icon = _ICON_MAP.get(s.name, "🧩")
+        with st.sidebar.expander(f"🟢 {icon} {s.name}"):
+            st.caption(s.description)
+            if s.triggers:
+                st.caption(f"触发词：{', '.join(s.triggers[:8])}" + ("…" if len(s.triggers) > 8 else ""))
 
 
 # ── 状态栏 ──────────────────────────────────────────────

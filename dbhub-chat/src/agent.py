@@ -15,6 +15,7 @@ from src.config import LLM_MODEL
 from src.llm import LLMClient, SYSTEM_PROMPT
 from src.mcp_client import MCPClient
 from src.safety import classify_sql, ConfirmationRequest, needs_confirmation
+from src.skills import get_registry
 
 logger = logging.getLogger(__name__)
 
@@ -67,13 +68,35 @@ class Agent:
     ) -> StepResult:
         """开启新一轮对话：添加用户消息，调用 LLM。
 
+        渐进式披露：检测触发词 → 加载命中 skill 的完整 .md 正文 → 注入 system 消息。
+        Qwen 只支持单条 system 消息，因此 base prompt + skill 正文合并为一条。
+
         Returns:
             StepResult，可能是 DONE / TOOL_CALLS / NEED_CONFIRM
         """
         self._round = 0
-        # 过滤掉历史中的 system 消息（Qwen 要求 system 必须在最前面且只能有一条）
+
+        # ── 渐进式披露：检测触发的 skill ──
+        registry = get_registry()
+        triggered = registry.detect(user_message)
+        skill_bodies: list[str] = []
+        if triggered:
+            logger.info("检测到触发 skill: %s", triggered)
+            for name in triggered:
+                body = registry.load(name)
+                if body:
+                    # 给每个 skill 加标题标记，让 LLM 清楚边界
+                    skill_bodies.append(f"# Skill: {name}\n\n{body}")
+                    logger.info("已注入 skill: %s (%d 字符)", name, len(body))
+
+        # 组装 system 消息（Qwen 只支持单条 system，合并为一条）
+        system_content = SYSTEM_PROMPT
+        if skill_bodies:
+            system_content += "\n\n---\n\n" + "\n\n---\n\n".join(skill_bodies)
+
+        # 过滤掉历史中的 system 消息（Qwen 要求 system 在最前面且只能有一条）
         clean_history = [m for m in history if m.get("role") != "system"]
-        messages = [{"role": "system", "content": SYSTEM_PROMPT}, *clean_history]
+        messages = [{"role": "system", "content": system_content}, *clean_history]
         messages.append({"role": "user", "content": user_message})
         return await self._llm_step(messages)
 

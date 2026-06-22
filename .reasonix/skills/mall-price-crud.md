@@ -1,6 +1,28 @@
 ---
 name: mall-price-crud
 description: 联想商城/EPP 商城物料价格增删改查 — goodsindex schema 专用，含生成列处理、会员组价、字段语义确认、全表覆盖
+triggers:
+  - 改价
+  - 新增物料
+  - 修改商城价格
+  - 调整会员组价
+  - 价格
+  - 物料编码
+  - SN
+  - mall_type
+  - 修改名称
+  - 改名字
+  - 商品名称
+  - 删除物料
+  - 查询物料
+  - 商品编码
+  - products_code
+  - 物料号
+  - 基础价
+  - 会员价
+  - 等级价
+  - 折扣价
+  - goodsindex
 ---
 
 # mall-price-crud — 商城价格管理
