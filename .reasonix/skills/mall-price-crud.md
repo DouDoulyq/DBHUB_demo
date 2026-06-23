@@ -119,20 +119,28 @@ triggers:
 
 ---
 
-## ⚠️ 生成列（最重要）
+## ⚠️ 生成列 + json 类型（最重要）
 
 `goodsindex` 下所有**名称类字段**（name、goods_name、title 等）都是 **生成列（generated column）**，由 `indexdata` JSON 自动生成，**禁止直接 UPDATE 列值**。
 
-| 操作目标 | 正确做法 |
-|---------|---------|
-| 修改名称 | `jsonb_set(indexdata::jsonb, '{name}', '"新名称"'::jsonb)` |
-| 修改价格 | `jsonb_set(indexdata::jsonb, '{basePrice}', '99.9'::jsonb)` |
-| 修改其他属性 | 更新 `indexdata` JSON 中对应字段 |
+此外，`indexdata` 列的类型是 **`json`（不是 `jsonb`）**。`jsonb_set()` 函数只接受 `jsonb` 参数，返回 `jsonb`。因此修改 indexdata 必须**双重转型**：
+
+```
+indexdata（json） → ::jsonb → jsonb_set(...) → ::json → 写回 json 列
+```
+
+| 操作目标 | 正确 SQL 片段 |
+|---------|-------------|
+| 修改名称 | `SET indexdata = jsonb_set(indexdata::jsonb, '{name}', '"新名称"'::jsonb)::json` |
+| 修改价格 | `SET indexdata = jsonb_set(indexdata::jsonb, '{basePrice}', '99.9'::jsonb)::json` |
+| 修改其他属性 | 同上模式，必须带 `::jsonb` 输入转型和 `::json` 输出转型 |
 
 错误示例：`UPDATE goodsindex.goods_index_edit SET name='xxx'` → ❌
 正确示例：`UPDATE goodsindex.goods_index_edit SET indexdata = jsonb_set(indexdata::jsonb, '{name}', '"xxx"'::jsonb)::json WHERE ... RETURNING *` → ✅
 
-报错 "cannot be updated because it is a generated column" 时，说明你试图直接更新生成列 → 立即改为更新 `indexdata` JSON。
+报错 "cannot be updated because it is a generated column" → 你在直接改生成列，改为更新 indexdata。
+报错 "function jsonb_set(json, ...) does not exist" → 你忘了 `::jsonb` 转型。
+写入后数据格式异常 → 你忘了末尾的 `::json` 回转型。
 
 ---
 
@@ -191,7 +199,9 @@ SQL 涉及 `goodsindex` schema 下的表时也必须激活。
 
 ### ⛔ 最高优先级规则
 
-**字段确认之后，你的下一个动作必须是执行全表搜索 SQL——不得跳过、不得只查一张表、不得根据"经验"猜测该改哪张表。不执行全表搜索 = 违反此 Skill。**
+1. **字段确认之后，必须立即执行全表搜索 SQL**——不得跳过、不得只查一张表、不得根据"经验"猜测该改哪张表。
+2. **全表搜索 SQL 执行完后，必须逐表汇报 5 张表的查询结果**——即使某表命中 0 条也要列出，一张都不能少。**禁止只汇报有数据的表、禁止只汇报第一张表、禁止在汇报完之前做任何其他操作。**
+3. 不执行全表搜索 + 不逐表完整汇报 = 违反此 Skill。
 
 ---
 
@@ -278,15 +288,21 @@ WHERE material_number = '用户提供的编码'
    OR goods_code::text = '用户提供的编码';
 ```
 
-用精确匹配 `=`，不用 `LIKE`。搜索结果以 A/B 选项呈现（命中 0 的表不列）：
+用精确匹配 `=`，不用 `LIKE`。
 
-> 🔍 该物料在以下表中找到：
+**SQL 执行完后，你必须用以下格式逐表汇报查询结果，5 张表一张都不能少（即使命中 0 条也要列出）：**
+
+> 🔍 全表搜索结果：
 >
 > **A.** goods_index_edit — N 条（商城基础价编辑表）
 > **B.** enterprise_price_edit_index — M 条（会员组等级价编辑表）
-> ...
+> **C.** goods_index — P 条（商城基础价主表）
+> **D.** goods_online_index — Q 条（商城基础价线上表）
+> **E.** enterprise_price_online_index — R 条（会员组等级价线上表）
 >
 > 请回复要操作哪些表（如「A B」= 操作 A 和 B，「全部」= 所有表）。
+
+**严禁只汇报部分表。即使某表命中 0 条也必须写上 "0 条"。不许多说其他内容，先汇报完 5 张表再等用户选择。**
 
 用户选表后回显确认，然后进入阶段 3。
 
@@ -296,10 +312,10 @@ WHERE material_number = '用户提供的编码'
 
 | 用户选中的表 | 价格类型 | SQL 要点 |
 |------------|---------|---------|
-| `goods_index_edit` / `goods_index` / `goods_online_index` | 基础价 | `jsonb_set(indexdata::jsonb, '{basePrice}', '新价格'::jsonb)` |
-| `enterprise_price_edit_index` / `enterprise_price_online_index` | 会员组价 | `jsonb_set` 更新 `price` 或 `indexdata` 中的 `discountPrice` |
+| `goods_index_edit` / `goods_index` / `goods_online_index` | 基础价 | `UPDATE {表} SET indexdata = jsonb_set(indexdata::jsonb, '{basePrice}', '新价格'::jsonb)::json WHERE ... RETURNING *` |
+| `enterprise_price_edit_index` / `enterprise_price_online_index` | 会员组价 | `jsonb_set` 更新 `price` 或 `indexdata` JSON，同样需要 `::jsonb` → `::json` 双重转型 |
 
-**基础价**：查当前价 → 用户输入新价 → `UPDATE {表} SET indexdata = jsonb_set(...) WHERE ... RETURNING *`
+**基础价**：查当前价 → 用户输入新价 → 执行上面的 UPDATE（注意 `::jsonb` 和 `::json` 都不能省略）
 
 **会员组价**：查当前等级 → 用户选等级 → 输入新折扣价 → `UPDATE ... RETURNING *`
 
