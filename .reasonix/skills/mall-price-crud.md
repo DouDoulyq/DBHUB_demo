@@ -34,7 +34,7 @@ triggers:
 ## 核心原则
 
 1. **字段语义必须先确认**：用户使用的自然语言词汇（如「商品编码」「物料号」「价格」「名称」）在你查询数据库前，必须先逐项确认对应的数据库字段名。
-2. **全表覆盖不遗漏**：查询物料时，必须在 `goodsindex` schema 下**所有相关的价格表中**搜索，不得只查单表。
+2. **全表遍历，禁止默认单表**：改/删/查物料时，**第一步必须是跨表搜索**（步骤 1），在所有价格表中查找该物料。**绝对禁止未经搜索就直接修改 `goods_index_edit`**，即使你认为「大概率在那里」也不行。必须列出每张表的命中数，让用户选择操作哪些表。
 3. **先预览后执行**：所有写操作（INSERT/UPDATE/DELETE）必须先展示 SQL 预览，等待用户明确确认后才能执行。
 
 ---
@@ -152,31 +152,94 @@ SQL 涉及 `goodsindex` schema 下的表时也必须激活。
 
 用户在自然语言中提到的概念，**必须先逐一映射到数据库字段后向用户确认**，不得自行猜测。确认通过后才能进入下一步。
 
-**常见映射表：**
+**核心原则：让用户只需回复字母（A / B / C），无需打字。**
 
-| 用户可能说的词 | 可能的数据库字段 | 确认问题示例 |
-|-------------|---------------|------------|
-| 商品编码 / 商品编号 | `goods_code` (integer) 或 `products_code` (integer) | "你说的「商品编码」是指 `goods_code` 还是 `products_code`？" |
-| 物料编码 / SN / 物料号 | `material_number` (varchar) | "你说的「物料编码」是指 `material_number` 吗？" |
-| 价格 / 基础价 / 原价 | `indexdata.basePrice` 或 `base_price` | "你说的「价格」是指基础价格（basePrice）吗？" |
-| 会员价 / 等级价 / 折扣价 | `price[].discountPrice` (enterprise_price_edit_index) | "你说的「会员价」是指 `enterprise_price_edit_index` 表中的等级折扣价吗？" |
-| 名称 / 商品名称 | `name` (生成列) 或 `indexdata.name` | "你说的「名称」是指商品名称（indexdata 中的 name）吗？" |
-| 商城 / 平台 | `mall_type` (1=联想商城, 2=EPP 商城) | "你指的是联想商城（mall_type=1）还是 EPP 商城（mall_type=2）？" |
+**常见映射选项表：**
 
-**确认格式**（必须逐项列出，等用户回复后再继续）：
+| 用户可能说的词 | 选项 |
+|-------------|------|
+| 商品编码 / 商品编号 | A. `goods_code`（integer） B. `products_code`（integer） |
+| 物料编码 / SN / 物料号 | A. `material_number`（varchar） |
+| 价格 / 基础价 / 原价 | A. `indexdata.basePrice` B. `base_price`（double） |
+| 会员价 / 等级价 / 折扣价 | A. `price[].discountPrice`（enterprise_price_edit_index 表） |
+| 名称 / 商品名称 | A. `name`（生成列） B. `indexdata.name` |
+| 商城 / 平台 | A. 联想商城（mall_type=1） B. EPP 商城（mall_type=2） |
 
-> 在查询之前，请确认以下字段映射：
-> 1. 你说的「商品编码」是指 `goods_code`（integer 类型）吗？
-> 2. 你说的「价格」是指 `indexdata` 中的 `basePrice` 吗？
-> 3. 你指的是哪个商城？联想商城（mall_type=1）还是 EPP 商城（mall_type=2）？
+**确认格式**（必须为每个歧义字段列出 A/B 选项，用户只需回复字母）：
+
+> ⚠️ 在查询之前，请确认字段含义（直接回复字母即可）：
 >
-> 请确认后我再继续。
+> **1. 你说的「商品编码」是指？**
+> A. `goods_code`（integer 类型）
+> B. `products_code`（integer 类型）
+>
+> **2. 你说的「价格」是指？**
+> A. `indexdata` 中的 `basePrice`
+> B. `base_price` 列
+>
+> 请回复如「1A 2A」或「A A」。
 
-**用户未明确确认前，不得执行任何数据库查询。**
+- 每条歧义编号（1. 2. 3. …），每条约 2-4 个选项（A/B/C/D）
+- 只有一个选项时也要列出 A 让用户确认
+- 用户回复后，将字母映射为具体字段，并**回显确认结果**再继续
 
-### 步骤 1：全表搜索物料（改/删/查时必须执行）
+**用户未明确回复字母确认前，不得执行任何数据库查询。**
 
-用户确认字段映射后，必须在 **所有 4 张核心价格表** 中搜索该物料：
+---
+
+## 操作流程
+
+### ⛔ 最高优先级规则
+
+**字段确认之后，你的下一个动作必须是执行全表搜索 SQL——不得跳过、不得只查一张表、不得根据"经验"猜测该改哪张表。不执行全表搜索 = 违反此 Skill。**
+
+---
+
+## 新增物料
+
+新增物料不需要全表搜索，但需要字段确认。
+
+依次引导用户提供（缺一不可）：
+1. **物料编码** (material_number) →
+2. **业务类型**（mall_type：1=联想商城，2=EPP商城）→
+3. **商品名称** →
+4. **基础价格** (basePrice) →
+5. 代理价（可选）→
+6. **预览确认** → 展示完整 INSERT 语句，包含 `RETURNING *`
+7. 用户确认后执行
+
+INSERT 示例：
+```sql
+INSERT INTO goodsindex.goods_index_edit (id, code, material_number, mall_type, indexdata, base_price)
+VALUES (
+  gen_random_uuid(),
+  (SELECT COALESCE(MAX(code), 0) + 1 FROM goodsindex.goods_index_edit),
+  '物料编码',
+  1,
+  jsonb_build_object(
+    'name', '商品名称',
+    'basePrice', 99.9,
+    'mallType', 1,
+    'materialNumber', '物料编码'
+  )::json,
+  99.9
+)
+RETURNING *;
+```
+
+---
+
+## 改价（完整流程）
+
+改价操作分 3 个阶段，**必须按顺序执行，禁止跳过任何阶段**。
+
+### 改价 · 阶段 1：字段语义确认
+
+执行**步骤 0**（见上方）。用户回复字母确认字段映射后，立即进入阶段 2，**不要等用户再说"继续"**。
+
+### 改价 · 阶段 2：全表搜索（🚫 禁止跳过）
+
+**确认字段后，你必须立即执行以下 SQL。不能跳过、不能只查一张表、不能说"大概率在 goods_index_edit 所以我直接改那"。**
 
 ```sql
 SELECT 'goods_index_edit' AS table_name, COUNT(*) AS cnt
@@ -215,89 +278,49 @@ WHERE material_number = '用户提供的编码'
    OR goods_code::text = '用户提供的编码';
 ```
 
-**必须用精确匹配 `=`，不要用 `LIKE` 模糊搜索**，避免误匹配。
+用精确匹配 `=`，不用 `LIKE`。搜索结果以 A/B 选项呈现（命中 0 的表不列）：
 
-列出每张表中是否存在该物料、有几条记录。然后问用户：
-> 该物料出现在以下表中：
-> - goods_index_edit: N 条
-> - enterprise_price_edit_index: M 条
-> - ...
+> 🔍 该物料在以下表中找到：
 >
-> 是否对所有表操作？还是只修改其中某几张？
+> **A.** goods_index_edit — N 条（商城基础价编辑表）
+> **B.** enterprise_price_edit_index — M 条（会员组等级价编辑表）
+> ...
+>
+> 请回复要操作哪些表（如「A B」= 操作 A 和 B，「全部」= 所有表）。
 
-用户明确选择范围后才能继续。
+用户选表后回显确认，然后进入阶段 3。
 
-### 步骤 2：选择操作类型
+### 改价 · 阶段 3：执行修改
 
-增 / 改 / 删 / 查
+**只修改用户在阶段 2 中选中的表，不要自行增减。**
 
-### 步骤 3：新增物料
+| 用户选中的表 | 价格类型 | SQL 要点 |
+|------------|---------|---------|
+| `goods_index_edit` / `goods_index` / `goods_online_index` | 基础价 | `jsonb_set(indexdata::jsonb, '{basePrice}', '新价格'::jsonb)` |
+| `enterprise_price_edit_index` / `enterprise_price_online_index` | 会员组价 | `jsonb_set` 更新 `price` 或 `indexdata` 中的 `discountPrice` |
 
-依次引导用户提供（缺一不可）：
-1. **物料编码** (material_number) →
-2. **业务类型**（mall_type：1=联想商城，2=EPP商城）→
-3. **商品名称** →
-4. **基础价格** (basePrice) →
-5. 代理价（可选）→
-6. **预览确认** → 展示完整 INSERT 语句，包含 `RETURNING *`
-7. 用户确认后执行
+**基础价**：查当前价 → 用户输入新价 → `UPDATE {表} SET indexdata = jsonb_set(...) WHERE ... RETURNING *`
 
-INSERT 示例：
-```sql
-INSERT INTO goodsindex.goods_index_edit (id, code, material_number, mall_type, indexdata, base_price)
-VALUES (
-  gen_random_uuid(),
-  (SELECT COALESCE(MAX(code), 0) + 1 FROM goodsindex.goods_index_edit),
-  '物料编码',
-  1,
-  jsonb_build_object(
-    'name', '商品名称',
-    'basePrice', 99.9,
-    'mallType', 1,
-    'materialNumber', '物料编码'
-  )::json,
-  99.9
-)
-RETURNING *;
-```
+**会员组价**：查当前等级 → 用户选等级 → 输入新折扣价 → `UPDATE ... RETURNING *`
 
-### 步骤 4：改价
+展示 diff（旧值→新值汇总表）→ 用户确认 → 执行。
 
-1. 先执行**步骤 0**（字段确认）和**步骤 1**（全表搜索）
-2. 确认用户要修改的表和价格类型：
+---
 
-| 商城类型 | 可选价格类型 | 对应表 |
-|---------|------------|--------|
-| 联想商城 (mall_type=1) | 基础价 | `goods_index_edit` |
-| 联想商城 (mall_type=1) | 会员组价 | `enterprise_price_edit_index` |
-| EPP 商城 (mall_type=2) | 基础价 | `goods_index_edit` |
-| EPP 商城 (mall_type=2) | 会员组价 | `enterprise_price_edit_index` |
+## 删除物料（完整流程）
 
-3. **基础价修改**：
-   - 查询当前价格：`SELECT material_number, name, indexdata->>'basePrice' AS current_price FROM goodsindex.goods_index_edit WHERE ...`
-   - 展示当前价格 → 用户输入新价格 →
-   - 生成 UPDATE：`UPDATE goodsindex.goods_index_edit SET indexdata = jsonb_set(indexdata::jsonb, '{basePrice}', '新价格'::jsonb)::json WHERE material_number = '...' RETURNING *`
-   - ⚠️ 不要 SET `update_time`（生成列只读）
+与改价相同的 3 阶段流程：
+1. **阶段 1**：字段语义确认
+2. **阶段 2**：全表搜索（同上 SQL，禁止跳过）→ 用户选表
+3. **阶段 3**：展示将删除的记录 → 用户确认 → `DELETE FROM ... RETURNING *`
 
-4. **会员组价修改**：
-   - 查询当前等级价：`SELECT material_number, goods_name, price FROM goodsindex.enterprise_price_edit_index WHERE ...`
-   - 展开所有等级 → 用户选等级 → 输入新折扣价
-   - 同样用 `jsonb_set` 更新 `price` JSON 或 `indexdata` JSON 中的 price
+---
 
-5. **展示 diff**：旧值 → 新值汇总表
-6. **确认后执行**，末尾加 `RETURNING *`
+## 查询物料（完整流程）
 
-### 步骤 5：删除物料
-
-1. 先执行**步骤 0**（字段确认）和**步骤 1**（全表搜索）
-2. 展示将删除的记录详情（至少显示 id, material_number, name, mall_type, basePrice）
-3. 用户确认后执行 `DELETE FROM ... WHERE ... RETURNING *`
-
-### 步骤 6：查询物料
-
-1. 先执行**步骤 0**（字段确认）和**步骤 1**（全表搜索）
-2. 根据用户需求展示相关字段
-3. 查询结果包含：表名、物料编码、商品名称、商城类型、价格信息
+1. **阶段 1**：字段语义确认
+2. **阶段 2**：全表搜索（同上 SQL，禁止跳过）→ 展示各表命中数
+3. **阶段 3**：根据用户需求查询具体数据
 
 ---
 
@@ -353,6 +376,7 @@ RETURNING *;
 - 改/删/查前必须执行**全表搜索**（步骤 1），覆盖 `goods_index_edit`、`enterprise_price_edit_index`、`goods_index`、`goods_online_index`、`enterprise_price_online_index` 五张表
 - 名称类字段是生成列，必须通过修改 `indexdata` JSON 来更新
 - 物料搜索用精确匹配 `=`，不用 `LIKE`
+- **🚫 禁止默认改单表**：绝对禁止在未执行步骤 1 全表搜索的情况下，直接修改 `goods_index_edit` 或任何单张表。即使你认为"大概率在那张表里"也不行。必须先搜索全部 5 张表 → 列出命中结果 → 让用户选择。
 
 ---
 
