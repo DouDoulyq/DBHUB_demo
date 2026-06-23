@@ -71,27 +71,36 @@ class SkillRegistry:
         self._load_all()
 
     def _load_all(self) -> None:
-        """扫描 skills 目录，解析所有 .md 文件。"""
+        """扫描 skills 目录，查找每个子目录下的 SKILL.md 文件。
+
+        目录结构：
+            .reasonix/skills/
+            ├── skill-name/
+            │   ├── SKILL.md          # 必需：技能主文件
+            │   ├── references/       # 可选：参考资料
+            │   └── scripts/          # 可选：可执行脚本
+        """
         if not self._dir.is_dir():
             logger.warning("Skill 目录不存在: %s", self._dir)
             return
 
-        for md_file in sorted(self._dir.glob("*.md")):
+        for skill_md in sorted(self._dir.glob("*/SKILL.md")):
+            skill_dir = skill_md.parent
             try:
-                text = md_file.read_text(encoding="utf-8")
+                text = skill_md.read_text(encoding="utf-8")
                 meta = _parse_frontmatter(text)
 
-                name = meta.get("name", md_file.stem)
+                name = meta.get("name", skill_dir.name)
                 skill = SkillDef(
                     name=name,
                     description=meta.get("description", ""),
                     triggers=meta.get("triggers", []),
-                    file_path=md_file,
+                    file_path=skill_md,
                 )
                 self._skills[name] = skill
-                logger.info("已加载 skill: %s (%d 个触发词)", name, len(skill.triggers))
+                logger.info("已加载 skill: %s (%d 个触发词) ← %s", name, len(skill.triggers), skill_dir)
             except Exception:
-                logger.exception("加载 skill 失败: %s", md_file)
+                logger.exception("加载 skill 失败: %s", skill_md)
 
     # ── 公开 API ────────────────────────────────────
 
