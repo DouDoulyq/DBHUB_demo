@@ -91,10 +91,11 @@ class SkillRegistry:
                 meta = _parse_frontmatter(text)
 
                 name = meta.get("name", skill_dir.name)
+                metadata = meta.get("metadata", {}) or {}
                 skill = SkillDef(
                     name=name,
                     description=meta.get("description", ""),
-                    triggers=meta.get("triggers", []),
+                    triggers=metadata.get("triggers", []),
                     file_path=skill_md,
                 )
                 self._skills[name] = skill

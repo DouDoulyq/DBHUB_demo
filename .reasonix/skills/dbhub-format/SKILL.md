@@ -1,12 +1,13 @@
 ---
 name: dbhub-format
 description: 约束 DBHub 输出格式：Markdown 表格 + 行限制 + 类型感知格式化（日期/金额/NULL/JSON）
-triggers:
-  - execute_sql
-  - search_objects
-  - SELECT
-  - 查询
-  - 格式化
+metadata:
+  triggers:
+    - execute_sql
+    - search_objects
+    - SELECT
+    - 查询
+    - 格式化
 ---
 
 # dbhub-format — SQL 查询结果格式化规范
