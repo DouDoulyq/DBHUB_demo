@@ -263,6 +263,47 @@ def _set_current_conv_title(title: str) -> None:
             return
 
 
+def _insert_thinking_after_user(msgs: list[dict], thinking_msg: dict) -> None:
+    """将一个 __thinking__ 消息插入到 msgs 中紧跟最后一条 user 消息之后。
+
+    如果 msgs 末尾已经是 assistant（或没有 user），则插入到末尾。
+    """
+    insert_idx = len(msgs)
+    for i in range(len(msgs) - 1, -1, -1):
+        if msgs[i].get("role") == "user":
+            insert_idx = i + 1
+            break
+    msgs.insert(insert_idx, thinking_msg)
+
+
+def _insert_thinking_by_index(
+    msgs: list[dict],
+    thinking_msgs: list[dict],
+    insert_indices: list[int],
+) -> None:
+    """按指定的索引位置，将多个 __thinking__ 消息插入到 msgs 中。
+
+    Args:
+        msgs: 目标消息列表（原地修改）
+        thinking_msgs: 要插入的 __thinking__ 消息（顺序对应 insert_indices）
+        insert_indices: 每个 __thinking__ 在 msgs 中的插入索引
+
+    Note: 此函数按从大到小顺序插入以避免索引位移；从后往前插入。
+    """
+    if not thinking_msgs or not insert_indices:
+        return
+    # 配对并按插入索引从大到小排序（确保前面的插入不被后面的影响）
+    pairs = sorted(
+        zip(thinking_msgs, insert_indices),
+        key=lambda x: x[1],
+        reverse=True,
+    )
+    for tmsg, idx in pairs:
+        # 索引边界保护
+        idx = max(0, min(idx, len(msgs)))
+        msgs.insert(idx, tmsg)
+
+
 def init_session() -> None:
     """初始化 session_state 中的持久变量。"""
     defaults = {
@@ -399,7 +440,19 @@ async def handle_user_input(user_msg: str) -> None:
         return
 
     all_msgs = st.session_state["messages"]
-    messages = [m for m in all_msgs if m.get("role") != "__thinking__"]
+    # 仅提取 user/assistant/tool 消息作为 LLM 历史（剥离 __thinking__）。
+    # 同时记下每个原有 __thinking__ 在过滤后 messages 中的插入位置（==它前面非 thinking 消息的数量），
+    # 以便本轮结束时把之前各轮的 __thinking__ 按原位插回。
+    messages: list[dict] = []
+    prev_thinking_insert_idx: list[int] = []  # 对应到下方 messages 中的索引
+    _non_thinking_count = 0
+    for m in all_msgs:
+        if m.get("role") == "__thinking__":
+            prev_thinking_insert_idx.append(_non_thinking_count)
+        else:
+            messages.append(m)
+            _non_thinking_count += 1
+    prev_thinking_msgs: list[dict] = [m for m in all_msgs if m.get("role") == "__thinking__"]
     if not messages:
         _set_current_conv_title(user_msg[:20] + ("..." if len(user_msg) > 20 else ""))
 
@@ -605,6 +658,13 @@ async def handle_user_input(user_msg: str) -> None:
                 result.content,
                 raw_result=st.session_state.get("_last_export_raw"),
             )
+            # 先把之前各轮的 __thinking__ 按原位插回到 messages
+            _insert_thinking_by_index(messages, prev_thinking_msgs, prev_thinking_insert_idx)
+            # 再把本轮的 __thinking__ 紧跟当前 user 之后插入
+            _insert_thinking_after_user(messages, {
+                "role": "__thinking__",
+                "steps": thinking_steps,
+            })
             st.session_state["messages"] = messages
             _sync_messages_to_conv()
 
@@ -627,19 +687,6 @@ async def handle_user_input(user_msg: str) -> None:
             status.update(label="❌ 出错", state="error")
             st.error(result.content)
 
-    # ── 状态块结束后：将思考过程插入消息列表（紧跟在用户消息之后）──
-    if thinking_steps:
-        # 找到最后一条 user 消息的位置，在其后插入 __thinking__ 消息
-        insert_idx = len(st.session_state["messages"]) - 1
-        for i in range(len(st.session_state["messages"]) - 1, -1, -1):
-            if st.session_state["messages"][i].get("role") == "user":
-                insert_idx = i + 1
-                break
-        st.session_state["messages"].insert(insert_idx, {
-            "role": "__thinking__",
-            "steps": thinking_steps,
-        })
-
 
 async def handle_confirmation(approved: bool) -> None:
     """处理用户确认结果。"""
@@ -650,6 +697,19 @@ async def handle_confirmation(approved: bool) -> None:
     pending = st.session_state["pending_confirm"]
     messages = st.session_state["pending_messages"]
     thinking_steps = st.session_state.pop("_pending_thinking", [])
+
+    # 从 st.session_state["messages"] 派生之前各轮 __thinking__ 的位置信息，
+    # 这样确认完成时也能把 thinking 按原位插回。
+    prev_all_msgs = st.session_state["messages"]
+    prev_thinking_msgs: list[dict] = []
+    prev_thinking_insert_idx: list[int] = []
+    _non_thinking_count = 0
+    for m in prev_all_msgs:
+        if m.get("role") == "__thinking__":
+            prev_thinking_insert_idx.append(_non_thinking_count)
+            prev_thinking_msgs.append(m)
+        else:
+            _non_thinking_count += 1
 
     if approved and pending:
         # 执行危险操作
@@ -708,25 +768,29 @@ async def handle_confirmation(approved: bool) -> None:
             else:
                 render_assistant_message("操作已完成。")
 
-            st.session_state["messages"] = messages
-            _sync_messages_to_conv()
-
-            # 将思考过程插入消息列表
+            # 先把之前各轮的 __thinking__ 按原位插回到 messages
+            _insert_thinking_by_index(messages, prev_thinking_msgs, prev_thinking_insert_idx)
+            # 再把本轮累积的 __thinking__ 紧跟当前 user 之后插入
             if thinking_steps:
-                insert_idx = len(st.session_state["messages"]) - 1
-                for i in range(len(st.session_state["messages"]) - 1, -1, -1):
-                    if st.session_state["messages"][i].get("role") == "user":
-                        insert_idx = i + 1
-                        break
-                st.session_state["messages"].insert(insert_idx, {
+                _insert_thinking_after_user(messages, {
                     "role": "__thinking__",
                     "steps": thinking_steps,
                 })
+            st.session_state["messages"] = messages
+            _sync_messages_to_conv()
     else:
         # 用户取消
         st.info("操作已取消。")
         # 添加取消消息到历史
         messages.append({"role": "user", "content": "（用户取消了该操作）"})
+        # 先把之前各轮的 __thinking__ 按原位插回到 messages
+        _insert_thinking_by_index(messages, prev_thinking_msgs, prev_thinking_insert_idx)
+        # 再把当前轮累积的思考过程插入到当前 user 之后
+        if thinking_steps:
+            _insert_thinking_after_user(messages, {
+                "role": "__thinking__",
+                "steps": thinking_steps,
+            })
         st.session_state["messages"] = messages
         _sync_messages_to_conv()
 
